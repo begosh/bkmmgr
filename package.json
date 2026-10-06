@@ -1,0 +1,47 @@
+{
+  "name": "edgemark-bookmark-manager",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Smart Edge Bookmark Manager with PARA taxonomy, metadata extraction, dead link verification, deduplication, and URL sanitization.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/begosh/bkmmgr.git"
+  },
+  "homepage": "https://github.com/begosh/bkmmgr#readme",
+  "bugs": {
+    "url": "https://github.com/begosh/bkmmgr/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "tsx --test tests/services.test.ts",
+    "icons": "powershell -ExecutionPolicy Bypass -File scripts/generate-icons.ps1",
+    "package": "powershell -ExecutionPolicy Bypass -File scripts/package-extension.ps1"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.453.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwind-merge": "^2.5.4"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.280.0",
+    "@types/node": "^22.8.1",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.14",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
+  }
+}
