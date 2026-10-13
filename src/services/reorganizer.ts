@@ -1,11 +1,12 @@
-import { BookmarkItem, ProposedFolder, TaxonomyTemplate, FolderSortOptions } from '../types';
+import { BookmarkItem, ProposedFolder, TaxonomyTemplate, FolderSortOptions, AIClassificationRun } from '../types';
 import { proposeBookmarkFolder } from './classifier';
 import { PageMetadata } from '../types';
 import { DEFAULT_TAXONOMY } from './taxonomyTemplates';
 import { ensureFolderPath, moveBookmark } from './bookmarkManager';
 import { createBookmarkSnapshot } from './backupService';
-import { getAISettings, batchClassifyWithAI } from './aiProvider';
+import { getAISettings, batchClassifyWithAI, DEFAULT_AI_SETTINGS } from './aiProvider';
 import { sortFolder } from './bookmarkSorter';
+import { createAIRun, describeAIRun } from './aiRunStatus';
 
 export interface ProposedMove {
   bookmark: BookmarkItem;
@@ -23,6 +24,7 @@ export interface ReorganizationPlan {
   taxonomy: TaxonomyTemplate;
   moves: ProposedMove[];
   unmovedCount: number;
+  aiRun?: AIClassificationRun;
 }
 
 /**
@@ -54,7 +56,8 @@ export function isAlreadyInTargetFolder(currentFolder: string, proposal: Propose
  */
 export function generateReorganizationPlan(
   bookmarks: BookmarkItem[],
-  taxonomy: TaxonomyTemplate = DEFAULT_TAXONOMY
+  taxonomy: TaxonomyTemplate = DEFAULT_TAXONOMY,
+  includeAlreadyFiled: boolean = false
 ): ReorganizationPlan {
   const moves: ProposedMove[] = [];
   let unmovedCount = 0;
@@ -87,7 +90,7 @@ export function generateReorganizationPlan(
     const currentFolder = bkm.folderPath || 'Unsorted';
 
     // If already in target folder, no move needed
-    if (isAlreadyInTargetFolder(currentFolder, proposal)) {
+    if (!includeAlreadyFiled && isAlreadyInTargetFolder(currentFolder, proposal)) {
       unmovedCount++;
       continue;
     }
@@ -124,16 +127,18 @@ export async function generateReorganizationPlanAsync(
   useAi: boolean = false,
   onAiProgress?: (statusMsg: string) => void
 ): Promise<ReorganizationPlan> {
-  const basePlan = generateReorganizationPlan(bookmarks, taxonomy);
-  if (!useAi) return basePlan;
-
-  const aiSettings = await getAISettings();
-  if (!aiSettings.enabled || aiSettings.provider === 'disabled') {
-    return basePlan;
+  const aiSettings = useAi ? await getAISettings() : {...DEFAULT_AI_SETTINGS, provider: 'disabled' as const};
+  const activeAI = useAi && aiSettings.enabled && aiSettings.provider !== 'disabled';
+  const basePlan = generateReorganizationPlan(bookmarks, taxonomy, activeAI && aiSettings.classificationMode === 'ai-only');
+  const skippedRun = createAIRun(aiSettings, 0);
+  skippedRun.status = 'skipped';
+  if (!activeAI) {
+    skippedRun.reason = useAi ? 'AI assistance is disabled in Settings; used rules.' : 'AI assistance was not selected; used rules.';
+    return {...basePlan, aiRun: skippedRun};
   }
 
   // Identify candidates for AI:
-  // In hybrid mode, refine ambiguous or low-confidence (<0.80) or fallback matches
+  // In hybrid mode, refine ambiguous or low-confidence (<0.85) or fallback matches.
   const aiCandidates = basePlan.moves.filter((m) => {
     if (aiSettings.classificationMode === 'ai-only') return true;
     return (
@@ -144,18 +149,18 @@ export async function generateReorganizationPlanAsync(
   });
 
   if (aiCandidates.length === 0) {
-    return basePlan;
-  }
-
-  if (onAiProgress) {
-    const providerName =
-      aiSettings.provider === 'ollama' ? 'Ollama' : `Gemini (${aiSettings.geminiModel || 'Flash'})`;
-    onAiProgress(`Consulting ${providerName} for ${aiCandidates.length} ambiguous bookmarks...`);
+    skippedRun.reason = aiSettings.classificationMode === 'ai-only'
+      ? 'AI Primary found no supported HTTP(S) bookmarks in this scope; no classification was needed.'
+      : 'Hybrid rules found no ambiguous proposed moves. Select AI Primary in Settings to classify all eligible bookmarks.';
+    return {...basePlan, aiRun: skippedRun};
   }
 
   try {
     const candidateBookmarks = aiCandidates.map((c) => c.bookmark);
-    const aiResults = await batchClassifyWithAI(candidateBookmarks, taxonomy, aiSettings);
+    const aiResults = await batchClassifyWithAI(candidateBookmarks, taxonomy, aiSettings, undefined, run => {
+      basePlan.aiRun = run;
+      onAiProgress?.(describeAIRun(run));
+    });
 
     const providerType = aiSettings.provider === 'ollama' ? 'ollama' : 'gemini';
 
@@ -173,12 +178,19 @@ export async function generateReorganizationPlanAsync(
       }
     }
   } catch (err: any) {
-    console.warn('AI classification failed, maintaining heuristic proposals:', err);
-    if (onAiProgress) {
-      onAiProgress(`AI note: ${err.message || 'AI request failed; used rules.'}`);
-    }
+    skippedRun.reason = 'AI preparation failed; used rules.';
+    basePlan.aiRun = skippedRun;
   }
 
+  // AI can confirm an existing location or overturn the heuristic destination.
+  basePlan.moves = basePlan.moves.filter(move => {
+    const alreadyFiled = isAlreadyInTargetFolder(move.currentFolder, {
+      taxonomyName: taxonomy.name, category: move.proposedCategory, subfolder: move.proposedSubfolder,
+      fullPath: move.targetPath, confidence: move.confidence, reasoning: move.reasoning, suggestedTags: [],
+    });
+    if (alreadyFiled) basePlan.unmovedCount++;
+    return !alreadyFiled;
+  });
   basePlan.moves.sort((a, b) => b.confidence - a.confidence);
   return basePlan;
 }
@@ -223,7 +235,7 @@ export async function executeReorganizationPlan(
   if (sortOptions && modifiedFolderIds.size > 0) {
     for (const folderId of modifiedFolderIds) {
       try {
-        await sortFolder(folderId, sortOptions);
+        await sortFolder(folderId, sortOptions, true);
         foldersSorted++;
       } catch (err) {
         console.warn(`Failed to sort destination folder ${folderId}:`, err);

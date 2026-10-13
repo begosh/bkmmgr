@@ -68,14 +68,14 @@ Microsoft Edge extensions are managed through the **Microsoft Partner Center**.
 Navigate to **Store listings** -> **English (United States)**:
 1. **Extension Name**: `EdgeMark - Smart Bookmark Manager & AI Organizer`
 2. **Short Description**: Copy from `STORE_LISTING.md` Section 2:
-   > `AI-powered bookmark manager: PARA organizer, duplicate detector, link health auditor, tracking cleaner & auto-divider sorting.`
+   > `AI-powered bookmark manager: PARA organizer, duplicate detector, link health auditor, tracking cleaner & automatic sorting.`
 3. **Detailed Description**: Copy the full markdown text from `STORE_LISTING.md` Section 3.
 4. **Extension Logo**: Upload `public/icons/icon128.png` (or a 300x300 version).
 5. **Screenshots**: Upload 3 to 5 screenshots (1280x800 resolution recommended):
    - Screenshot 1: PARA Reorganizer with interactive diff.
    - Screenshot 2: Link Health Auditor detecting 404s and permanent redirects.
    - Screenshot 3: URL Cleaner with stripped tracking tags.
-   - Screenshot 4: Quick Save popup with visual dividers and auto-sort.
+   - Screenshot 4: Quick Save popup with auto-sort.
    - Screenshot 5: AI & Settings tab with Gemini model discovery.
 6. **Search Keywords**: Add `bookmarks`, `bookmark manager`, `para method`, `url cleaner`, `dead link checker`.
 
@@ -88,7 +88,7 @@ In the **Notes for certification** box, Microsoft reviewers require an explanati
 
 > **Copy and paste this exact note to reviewers:**
 >
-> *"EdgeMark is a local-first bookmark manager and link maintenance tool. The `<all_urls>` host permission is exclusively utilized by the 'Link Health Auditor' feature to perform asynchronous HTTP HEAD and GET requests to user-saved bookmarks across external websites, checking whether links are alive (200), permanently redirected (301/308), or dead (404/410). It does not collect, transmit, or monetize any user data. All operations run locally on the client."*
+> *"EdgeMark is a local-first bookmark manager and link maintenance tool. The `<all_urls>` host permission supports link health checks across saved URLs, current/open-page metadata extraction for folder suggestions, and requests to the user's selected AI endpoint. Optional AI sends bookmark titles and URLs, plus available metadata or a short visible-text excerpt only when selected. Context comes from the current page or matching open tabs, without opening saved pages. Cloud/remote AI excludes intranet URLs by default; loopback Ollama can classify them locally. Bookmark storage remains local and no data is sold or used for advertising."*
 
 ### Step 7: Submit for Review
 1. Click **Submit**.
@@ -127,9 +127,10 @@ In the **Privacy practices** tab:
    - `sidePanel`: Render the sidebar assistant panel.
    - `scripting`: Extract on-page breadcrumbs and OpenGraph data for folder recommendations.
    - `identity`: Connect optional Google OAuth for Gemini AI integration.
-   - `<all_urls>`: Verify whether user-saved bookmark links are live or broken (CORS-free HTTP check).
+   - `contextMenus`: Provide quick-save and dashboard commands in browser context menus.
+   - `<all_urls>`: Verify saved links, extract current/open-page metadata, and reach the user's configured AI provider.
 3. **Data Usage Disclosures**:
-   - Check **"I do not collect or use user data"**.
+   - Declare bookmark titles/URLs and optional page metadata/excerpts used for AI classification using the store's current data disclosure fields. Do not claim no data use or transmission when optional AI is enabled.
    - Check all three developer compliance boxes (no selling data, no credit lending, no advertising).
 
 ### Step 5: Submit for Review
@@ -152,7 +153,7 @@ Last Updated: September 30, 2026
 EdgeMark ("the Extension") is committed to protecting your privacy. This Privacy Policy explains our practices regarding user data.
 
 1. Data Collection & Storage
-EdgeMark operates on a 100% local-first architecture. All bookmarks, folder structures, URL metadata, and user settings are stored locally on your device via the browser's native storage APIs. We do NOT collect, store, sell, or transmit your personal data, browsing history, or bookmark contents to any external servers.
+EdgeMark operates on a 100% local-first architecture. All bookmarks, folder structures, URL metadata, and user settings are stored locally on your device via the browser's native storage APIs. We do not operate a server that collects or sells your bookmark data. When you enable optional AI classification, selected bookmark information is sent directly to your configured provider as described below.
 
 2. Tracking Parameters & URL Sanitization
 EdgeMark includes a local URL sanitizer that strips advertising and tracking query parameters (e.g., UTM tags, Facebook click IDs, Google click IDs) directly in your browser. No telemetry is logged or reported.
@@ -161,7 +162,11 @@ EdgeMark includes a local URL sanitizer that strips advertising and tracking que
 If you choose to enable the Google Gemini AI integration:
 - Bookmark classification requests are sent directly from your browser to Google's official Gemini API using your personal API key or OAuth token.
 - Localhost, intranet domains (.lan, .local), and private network IP addresses are shielded from cloud transmission by default.
-- Query parameters and session tokens are stripped prior to AI classification.
+- Titles and URLs are sent by default. You can separately enable available page metadata (description, keywords, headings, site name, page types, breadcrumbs) or metadata plus a visible-text excerpt of up to 2,000 characters.
+- The popup and sidebar use the current page; bulk organization uses matching open tabs. Saved URLs are never opened or fetched for enrichment. Page context is not persisted in bookmark backups.
+- Excerpts omit form fields and editable, hidden, navigation, and script content. Signed-in page text can still be sensitive. Automatic filtering cannot identify every sensitive detail.
+- Tracking and common credential parameters are removed when URL privacy filtering is enabled. Obvious token strings are redacted from context, but this is not a guarantee that all sensitive data will be removed.
+- Ollama classification sends the same selected information to the endpoint you configure. The homelab/intranet safeguard allows protected bookmarks when Ollama runs on loopback (localhost, 127.0.0.1, or [::1]); it remains active for cloud providers and remote Ollama endpoints. Optional context and credential filtering still apply locally.
 
 4. Third-Party Services
 EdgeMark does not include any third-party analytics (no Google Analytics, no telemetry trackers, no advertising networks).

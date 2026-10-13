@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "EdgeMark - Smart Bookmark Manager & AI Organizer",
   "version": "1.0.0",
-  "description": "AI-powered bookmark manager: PARA organizer, duplicate detector, link health auditor, tracking cleaner & auto-divider sorting.",
+  "description": "AI-powered bookmark manager: PARA organizer, duplicate detector, link health auditor, tracking cleaner & automatic sorting.",
   "author": "EdgeMark Team",
   "homepage_url": "https://github.com/begosh/bkmmgr",
   "permissions": [
@@ -12,7 +12,8 @@
     "sidePanel",
     "scripting",
     "activeTab",
-    "identity"
+    "identity",
+    "contextMenus"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -33,6 +34,12 @@
   },
   "side_panel": {
     "default_path": "src/sidepanel/index.html"
+  },
+  "commands": {
+    "open-bookmarks-sidebar": {
+      "suggested_key": {"default": "Alt+Shift+B"},
+      "description": "Open EdgeMark bookmarks sidebar"
+    }
   },
   "options_ui": {
     "page": "src/manager/index.html",

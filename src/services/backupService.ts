@@ -37,8 +37,8 @@ export async function downloadJsonBackup(): Promise<void> {
 /**
  * Generates standard Netscape Bookmark HTML file format for universal browser compatibility
  */
-export async function downloadNetscapeHtmlBackup(): Promise<void> {
-  const tree = await getBookmarkTree();
+export async function downloadNetscapeHtmlBackup(savedTree?: BookmarkFolder[]): Promise<void> {
+  const tree = savedTree || await getBookmarkTree();
   let html = `<!DOCTYPE NETSCAPE-Bookmark-file-1>
 <!-- This is an automatically generated file.
      It will be read and overwritten.
@@ -85,6 +85,13 @@ export async function downloadNetscapeHtmlBackup(): Promise<void> {
   a.download = `edge-bookmarks-${dateStr}.html`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+export async function downloadSavedSnapshot(): Promise<void> {
+  if (typeof chrome === 'undefined' || !chrome.storage?.local) throw new Error('No saved safety backup is available.');
+  const snapshot = await new Promise<any>(resolve => chrome.storage.local.get(['lastBookmarkSnapshot'], result => resolve(result.lastBookmarkSnapshot)));
+  if (!Array.isArray(snapshot?.data)) throw new Error('No saved safety backup is available.');
+  await downloadNetscapeHtmlBackup(snapshot.data);
 }
 
 function escapeHtml(str: string): string {

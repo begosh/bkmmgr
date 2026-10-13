@@ -199,7 +199,9 @@ export const AboutTab: React.FC = () => {
               <h3 className="text-sm font-bold text-slate-900">Homelab & Privacy Shield</h3>
             </div>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Internal network hosts (`.lan`, `.local`, RFC1918 IPs like 192.168.* and 10.*) are automatically safeguarded. They are classified 100% offline via local heuristics and never sent to cloud AI providers.
+              The homelab/intranet safeguard blocks internal hosts from cloud and remote AI by default.
+              Ollama on localhost can classify them locally, using your selected page-context level.
+              The safeguard stays enabled if you switch providers, and credential filtering still applies.
             </p>
           </div>
 
@@ -209,10 +211,10 @@ export const AboutTab: React.FC = () => {
               <div className="p-2 rounded-lg bg-purple-50 text-purple-600">
                 <FolderTree className="w-5 h-5" />
               </div>
-              <h3 className="text-sm font-bold text-slate-900">Flexible Taxonomies & Dividers</h3>
+              <h3 className="text-sm font-bold text-slate-900">Flexible Taxonomies & Sorting</h3>
             </div>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Choose between Tiago Forte's PARA method (Projects, Areas, Resources, Archives), Topic-based, Tech Stack, or custom hierarchies. Clean visual dividers (`─── Domain ───`) keep your folders neat and organized.
+              Choose between Tiago Forte's PARA method (Projects, Areas, Resources, Archives), Topic-based, Tech Stack, or custom hierarchies. Sort bookmarks by site, title, or date to keep your folders organized.
             </p>
           </div>
 

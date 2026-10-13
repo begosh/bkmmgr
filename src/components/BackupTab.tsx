@@ -4,6 +4,7 @@ import {
   downloadJsonBackup,
   downloadNetscapeHtmlBackup,
   createBookmarkSnapshot,
+  downloadSavedSnapshot,
 } from '../services/backupService';
 import {
   Download,
@@ -21,6 +22,7 @@ interface BackupTabProps {
 export const BackupTab: React.FC<BackupTabProps> = ({ bookmarks }) => {
   const [snapshotSuccess, setSnapshotSuccess] = useState(false);
   const [isTakingSnapshot, setIsTakingSnapshot] = useState(false);
+  const [backupError, setBackupError] = useState('');
 
   const handleCreateSnapshot = async () => {
     setIsTakingSnapshot(true);
@@ -51,6 +53,11 @@ export const BackupTab: React.FC<BackupTabProps> = ({ bookmarks }) => {
         </div>
 
         {/* Action cards */}
+        <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 space-y-2">
+          <p className="text-xs text-amber-900">Recover bookmarks from the latest safety backup: download its HTML and import it using your browser's bookmark manager. Saving another snapshot replaces this backup.</p>
+          <button onClick={()=>downloadSavedSnapshot().catch(error=>setBackupError(error.message))} className="text-xs font-semibold text-blue-700 underline">Download last safety backup (HTML)</button>
+          {backupError && <p role="alert" className="text-xs text-red-700">{backupError}</p>}
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-100">
           {/* Netscape HTML Export */}
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
@@ -63,7 +70,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({ bookmarks }) => {
               titles. Ideal for transferring to other browsers.
             </p>
             <button
-              onClick={downloadNetscapeHtmlBackup}
+              onClick={()=>downloadNetscapeHtmlBackup()}
               className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-all"
             >
               <Download className="w-4 h-4" />

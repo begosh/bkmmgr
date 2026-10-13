@@ -199,6 +199,32 @@ export async function updateBookmarkTitle(id: string, newTitle: string): Promise
   });
 }
 
+/** Update the editable bookmark fields together and propagate browser errors. */
+export async function updateBookmark(id: string, changes: {title: string; url: string}): Promise<void> {
+  if (!isExtensionEnvironment) {
+    mockState = mockState.map(item => item.id === id ? {...item, ...changes} : item);
+    return;
+  }
+  await new Promise<void>((resolve, reject) => {
+    bookmarksApi().update(id, changes, () => {
+      const error = chrome.runtime?.lastError;
+      if (error) reject(new Error(error.message || 'Bookmark update failed.'));
+      else resolve();
+    });
+  });
+}
+
+export async function createFolder(title: string, parentId: string): Promise<string> {
+  if (!isExtensionEnvironment) throw new Error('Creating folders requires the installed browser extension.');
+  return new Promise((resolve, reject) => {
+    bookmarksApi().create({title, parentId}, (node: chrome.bookmarks.BookmarkTreeNode) => {
+      const error = chrome.runtime?.lastError;
+      if (error || !node) reject(new Error(error?.message || 'Folder creation failed.'));
+      else resolve(node.id);
+    });
+  });
+}
+
 /**
  * Removes a bookmark by ID
  */
@@ -207,8 +233,12 @@ export async function deleteBookmark(id: string): Promise<void> {
     mockState = mockState.filter((b) => b.id !== id);
     return;
   }
-  await new Promise<void>((resolve) => {
-    bookmarksApi().remove(id, () => resolve());
+  await new Promise<void>((resolve, reject) => {
+    bookmarksApi().remove(id, () => {
+      const error = chrome.runtime?.lastError;
+      if (error) reject(new Error(error.message || 'Bookmark removal failed.'));
+      else resolve();
+    });
   });
 }
 
@@ -220,12 +250,16 @@ export async function moveBookmark(id: string, parentId: string, index?: number)
     mockState = mockState.map((b) => (b.id === id ? { ...b, parentId } : b));
     return;
   }
-  await new Promise<void>((resolve) => {
+  await new Promise<void>((resolve, reject) => {
     const destination: { parentId: string; index?: number } = { parentId };
     if (typeof index === 'number') {
       destination.index = index;
     }
-    bookmarksApi().move(id, destination, () => resolve());
+    bookmarksApi().move(id, destination, () => {
+      const error = chrome.runtime?.lastError;
+      if (error) reject(new Error(error.message || 'Bookmark move failed.'));
+      else resolve();
+    });
   });
 }
 
@@ -258,8 +292,12 @@ export async function createBookmark(
   if (parentId) payload.parentId = parentId;
   if (typeof index === 'number') payload.index = index;
 
-  const created: chrome.bookmarks.BookmarkTreeNode = await new Promise((resolve) => {
-    bookmarksApi().create(payload, (res: chrome.bookmarks.BookmarkTreeNode) => resolve(res));
+  const created: chrome.bookmarks.BookmarkTreeNode = await new Promise((resolve, reject) => {
+    bookmarksApi().create(payload, (res: chrome.bookmarks.BookmarkTreeNode) => {
+      const error = chrome.runtime?.lastError;
+      if (error || !res) reject(new Error(error?.message || 'Bookmark creation failed.'));
+      else resolve(res);
+    });
   });
 
   return {

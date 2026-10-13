@@ -10,6 +10,7 @@ import {
   getModelIntelligence,
   DEPRECATED_GEMINI_MODELS,
   CURRENT_DEFAULT_GEMINI_MODEL,
+  DEFAULT_AI_SETTINGS,
 } from '../services/aiProvider';
 import {
   Bot,
@@ -33,6 +34,7 @@ import {
   Waves,
   Award,
 } from 'lucide-react';
+import { isLocalOllama } from '../services/aiPageContext';
 
 export const SettingsTab: React.FC = () => {
   const [settings, setSettings] = useState<AISettings | null>(null);
@@ -204,6 +206,8 @@ export const SettingsTab: React.FC = () => {
           <span className="text-xs font-semibold text-slate-700">Enable AI Assistance</span>
           <button
             type="button"
+            aria-label="Enable AI assistance"
+            aria-pressed={settings.enabled}
             onClick={() => handleUpdate({ enabled: !settings.enabled })}
             className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
               settings.enabled ? 'bg-purple-600' : 'bg-slate-300'
@@ -634,7 +638,10 @@ export const SettingsTab: React.FC = () => {
                 className="w-full text-xs font-mono px-3 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
               <p className="text-[11px] text-slate-500 mt-1">
-                Note: In Windows PowerShell, run <code>$env:OLLAMA_ORIGINS="*" ; ollama serve</code> to allow browser extension CORS.
+                Ollama must allow this browser extension in <code>OLLAMA_ORIGINS</code>.
+                {' '}Use <code>chrome-extension://*</code> or this extension's exact origin, then restart Ollama.
+                {' '}For WSL, change the Ollama systemd service; Windows environment variables do not update it.
+                {' '}<a className="text-blue-600 underline" href="https://github.com/begosh/bkmmgr#ollama-browser-access" target="_blank" rel="noreferrer">Setup instructions</a>
               </p>
             </div>
 
@@ -644,9 +651,9 @@ export const SettingsTab: React.FC = () => {
               </label>
               <input
                 type="text"
-                value={settings.ollamaModel || 'llama3.2'}
+                value={settings.ollamaModel || DEFAULT_AI_SETTINGS.ollamaModel}
                 onChange={(e) => handleUpdate({ ollamaModel: e.target.value })}
-                placeholder="llama3.2 or mistral"
+                placeholder="qwen3.5:4b-q4_K_M"
                 className="w-full text-xs px-3 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
@@ -662,7 +669,7 @@ export const SettingsTab: React.FC = () => {
             className="flex items-center space-x-2 px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold transition-colors"
           >
             <Sparkles className="w-3.5 h-3.5 text-purple-600" />
-            <span>{testStatus.loading ? 'Testing...' : 'Test AI Connection'}</span>
+            <span>{testStatus.loading ? 'Testing inference...' : 'Test AI Connection'}</span>
           </button>
 
           {testStatus.message && (
@@ -711,7 +718,7 @@ export const SettingsTab: React.FC = () => {
                 </span>
               </div>
               <p className="text-xs text-slate-500">
-                Runs local heuristics first (0ms, 100% offline). Only unclassified or low-confidence bookmarks are routed to the AI.
+                Uses offline rules first. Only ambiguous proposed moves are sent to AI; a plan may make zero AI requests.
               </p>
             </button>
 
@@ -731,10 +738,40 @@ export const SettingsTab: React.FC = () => {
                 </span>
               </div>
               <p className="text-xs text-slate-500">
-                Sends all eligible bookmarks through the AI batch organizer for pure semantic categorization.
+                Classifies all eligible bookmarks, including already-filed links. Failed or missing AI results keep rule proposals.
               </p>
             </button>
           </div>
+        </div>
+
+        <div className="space-y-2 pt-3 border-t border-slate-100">
+          <label htmlFor="ai-page-context" className="text-xs font-semibold text-slate-700 block">
+            Page context sent to AI (optional)
+          </label>
+          <select
+            id="ai-page-context"
+            value={settings.pageContextMode || 'off'}
+            onChange={(e) => handleUpdate({ pageContextMode: e.target.value as AISettings['pageContextMode'] })}
+            className="w-full text-sm bg-white border border-slate-300 rounded-lg px-3 py-2"
+          >
+            <option value="off">Titles and URLs only (default)</option>
+            <option value="metadata">Include available page metadata</option>
+            <option value="content">Include metadata and a short page excerpt</option>
+          </select>
+          <p className="text-xs text-slate-500">
+            Metadata can include the description, keywords, headings, site name, page types, and breadcrumbs.
+            Excerpts include up to 2,000 characters of visible page text, excluding forms and editable fields.
+            The popup and sidebar use the current page; the bulk organizer uses matching pages already open
+            in tabs. Unavailable context falls back to titles and URLs. Saved pages are never opened or fetched
+            for enrichment, and page context is not saved in bookmark backups.
+          </p>
+          {settings.pageContextMode && settings.pageContextMode !== 'off' && (
+            <p className="text-xs text-purple-800 bg-purple-50 border border-purple-200 p-3 rounded-lg">
+              Available page context will be sent to your selected AI provider when you use AI classification.
+              This can include text from signed-in pages. Keep this setting off for sensitive pages; automatic
+              filtering cannot identify every sensitive detail. Reload an open popup or sidebar after changing this option.
+            </p>
+          )}
         </div>
 
         {/* Privacy Safeguards */}
@@ -756,7 +793,9 @@ export const SettingsTab: React.FC = () => {
                 Strip tracking parameters & session tokens before sending to AI
               </span>
               <p className="text-xs text-slate-500">
-                Removes UTM tokens, click IDs (gclid, fbclid), and session queries so credentials are never sent to external LLMs.
+                Removes tracking, common credential parameters, and URL fragments from AI requests,
+                including links embedded in optional page context. Obvious token strings are redacted;
+                filtering cannot guarantee removal of every sensitive detail.
               </p>
             </div>
           </label>
@@ -770,11 +809,20 @@ export const SettingsTab: React.FC = () => {
             />
             <div>
               <span className="text-xs font-semibold text-slate-800">
-                Never send homelab or intranet bookmarks to cloud AI
+                Never send homelab or intranet bookmarks to cloud or remote AI
               </span>
               <p className="text-xs text-slate-500">
-                Bookmarks with private IP addresses (192.168.*, 10.*), <code>.lan</code>, or local domains are sorted purely offline via local heuristic rules.
+                Blocks private IP addresses, <code>.lan</code>, and local hostnames for cloud providers
+                and remote Ollama endpoints. Ollama on localhost, 127.0.0.1, or [::1] can classify these
+                bookmarks locally while this protection stays enabled. Optional metadata and excerpts
+                still follow your page-context setting; credential filtering remains active.
               </p>
+              {isLocalOllama(settings) && (
+                <p className="text-xs text-emerald-700 mt-1">
+                  Local Ollama selected: homelab and intranet bookmarks are allowed. This safeguard
+                  applies again if you switch to cloud AI or a remote Ollama endpoint.
+                </p>
+              )}
             </div>
           </label>
         </div>

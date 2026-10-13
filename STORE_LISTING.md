@@ -21,7 +21,7 @@ This document contains ready-to-use copy, descriptions, keywords, privacy declar
 
 ## 2. Short Description (Max 132 Characters)
 
-> **AI-powered bookmark manager: PARA organizer, duplicate detector, link health auditor, tracking cleaner & auto-divider sorting.**
+> **AI-powered bookmark manager: PARA organizer, duplicate detector, link health auditor, tracking cleaner & automatic sorting.**
 
 *(Character count: 127 characters — fits both Microsoft Edge Add-ons and Chrome Web Store requirements).*
 
@@ -34,9 +34,9 @@ This document contains ready-to-use copy, descriptions, keywords, privacy declar
 ```markdown
 Tired of bookmark chaos, broken links, duplicate tabs, and cluttered folders?
 
-EdgeMark is the intelligent, privacy-first bookmark manager engineered for modern web researchers, developers, and professionals. Organize thousands of bookmarks in seconds with Tiago Forte’s PARA method, strip invasive marketing telemetry, audit dead links with automatic Wayback Machine recovery, and keep your folders neat with automatic visual dividers.
+EdgeMark is the intelligent, privacy-first bookmark manager engineered for modern web researchers, developers, and professionals. Organize thousands of bookmarks in seconds with Tiago Forte’s PARA method, strip invasive marketing telemetry, audit dead links with automatic Wayback Machine recovery, and keep your folders neat with automatic sorting.
 
-Built with a local-first architecture and enterprise-grade SSO protection, EdgeMark keeps your data 100% private on your machine—with optional Google Gemini AI for smart semantic categorization.
+Built with a local-first architecture and enterprise SSO protection, EdgeMark stores bookmarks and settings on your device. Optional AI classification sends selected bookmark information to your configured provider.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ✨ KEY FEATURES
@@ -56,9 +56,9 @@ Built with a local-first architecture and enterprise-grade SSO protection, EdgeM
 • Canonicalizes Amazon product links into clean /dp/{ASIN} formats.
 • Cleans URLs on the active tab with 1 click, or batch cleans your entire bookmark library.
 
-🗂️ 3. Auto-Sort & Visual Dividers
+🗂️ 3. Auto-Sort by Site
 • Sort bookmarks alphabetically by domain and title in one click.
-• Inserts clean visual dividers (─── Domain ───) between site groups.
+• Keeps bookmarks from the same site together without creating extra bookmarks.
 • Auto-sorts target folders instantly upon saving new bookmarks.
 
 🏥 4. Link Health Auditor & Dead Link Repair
@@ -74,21 +74,21 @@ Built with a local-first architecture and enterprise-grade SSO protection, EdgeM
 
 ⚡ 6. Quick Save Popup & Docked Sidebar Assistant
 • Quick Save: 1-click clean bookmarking with instant folder proposal and auto-sort.
-• Edge Sidebar Assistant: Keep EdgeMark docked side-by-side while researching across multiple tabs without popup dismissals.
+• Bookmark sidebar: Browse folders, search, edit, move, delete, and save pages. Choose toolbar access and use the browser's native pin control to keep it handy.
 
-🤖 7. Privacy-First Hybrid AI (Google Gemini 3.8)
-• Blazing-fast 0ms local heuristic classification works 100% offline.
+🤖 7. Optional AI (Gemini or local Ollama)
+• Local heuristic classification works offline.
 • Optional Google Gemini AI integration for deep contextual folder suggestions.
-• Homelab & Privacy Shield: Localhost, .lan, .local, and private IP addresses (192.168.*, 10.*) are NEVER sent to external LLMs.
+• Homelab & Privacy Shield: Localhost, .lan, .local, and private IP addresses are blocked from cloud and remote AI by default. Loopback Ollama can classify them locally while the safeguard remains checked.
 
 💾 8. Universal Safety Backups
-• 1-click JSON snapshot with instantaneous rollback before any batch migration.
+• Safety snapshots before changes. Download the last saved backup as HTML for recovery through your browser's bookmark importer.
 • Universal Netscape Bookmark HTML export (compatible with Edge, Chrome, Safari, and Firefox).
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🛡️ PRIVACY & ENTERPRISE SECURITY
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-• 100% Local-First: Your bookmarks, URLs, and browsing metadata remain on your device.
+• Local-First: Bookmark storage and organization run on your device. AI transmission is optional, with a separate choice for page metadata and excerpts.
 • Zero Telemetry: No analytics, no tracking pixels, and no third-party data collection.
 • Enterprise SSO Safe: Protects SharePoint, Confluence, Jira, and internal portals from login-redirect clobbering.
 • Transparent Open Source: Released under the permissive MIT license.
@@ -138,14 +138,15 @@ When filling out the **Privacy Practices** questionnaire in the Chrome Web Store
 | `tabs` / `activeTab` | Required to detect the active page URL and page title in the Quick Save popup and Sidebar assistant. |
 | `storage` | Required to store user preferences (taxonomy choice, auto-sort settings, AI provider configuration) locally on the device. |
 | `sidePanel` | Required to provide the docked sidebar assistant interface in Microsoft Edge and Chrome. |
-| `scripting` | Required to extract on-page metadata (Schema.org JSON-LD and BreadcrumbList) on user request to recommend folder locations. |
+| `scripting` | Required to extract on-page metadata (Schema.org JSON-LD and BreadcrumbList) on user request to recommend folder locations. Optional AI context also uses page descriptions, keywords, headings, breadcrumbs, and a bounded visible-text excerpt when selected. |
 | `identity` | Required for optional Google OAuth sign-in when connecting user's Gemini AI account. |
+| `contextMenus` | Required for quick-save and dashboard commands in browser context menus. |
 | `<all_urls>` | Required for the Link Health Auditor to send HTTP HEAD/GET health check requests to saved bookmark URLs across diverse domains without being blocked by CORS. |
 
 ### C. Data Usage Declarations
-- **Data Collection**: Select **"No, I am not collecting or using user data"**.
+- **Data Usage**: Declare bookmark titles/URLs and optional page metadata/excerpts used for AI classification, following the store's current disclosure fields. Do not claim that no data is transmitted when optional AI is enabled.
 - **Data Transfer**: Select **"No data is sold to third parties or used for creditworthiness/advertising"**.
-- **Cloud AI (Optional)**: If the user enables Google Gemini, bookmark title/URL is sent directly from the client to the official Google Gemini API using the user's private API key. Intranet and local LAN URLs are blocked from transmission by default.
+- **Cloud AI (Optional)**: If the user enables Google Gemini, bookmark title/URL is sent directly from the client to the official Google Gemini API using the user's private API key. Users can separately opt into sending available page metadata or metadata plus a visible-text excerpt of up to 2,000 characters. Context comes from the current page or matching open tabs; unavailable context falls back to titles/URLs. Intranet and local LAN URLs are blocked from transmission by default.
 
 ---
 

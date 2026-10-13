@@ -66,6 +66,7 @@ export interface PageMetadata {
   headings?: string[];
   breadcrumbs?: string[];
   domain: string;
+  contentExcerpt?: string;
 }
 
 export interface ProposedFolder {
@@ -92,6 +93,7 @@ export interface TaxonomyTemplate {
 }
 
 export type AIProviderType = 'gemini-api' | 'google-oauth' | 'ollama' | 'disabled';
+export type AIPageContextMode = 'off' | 'metadata' | 'content';
 
 export interface AISettings {
   enabled: boolean;
@@ -102,10 +104,11 @@ export interface AISettings {
   googleOAuthScope?: string;
   googleAccessToken?: string;
   ollamaEndpoint?: string; // e.g. 'http://localhost:11434'
-  ollamaModel?: string; // e.g. 'llama3.2', 'mistral'
+  ollamaModel?: string; // e.g. 'qwen3.5:4b-q4_K_M'
   classificationMode: 'hybrid' | 'ai-only'; // hybrid = rules first, AI for ambiguous/unclassified
   stripQueryParamsBeforeAI: boolean;
-  excludeLocalAndIntranet: boolean; // Protect .lan and internal hostnames from cloud AI
+  excludeLocalAndIntranet: boolean; // Block cloud/remote AI; loopback Ollama can classify locally.
+  pageContextMode?: AIPageContextMode; // Missing setting keeps titles/URLs only.
 }
 
 export interface AIClassificationResult {
@@ -115,6 +118,24 @@ export interface AIClassificationResult {
   confidence: number;
   reasoning: string;
   suggestedTags?: string[];
+}
+
+// Counts and timing only: never persist bookmark URLs, page context, or secrets.
+export interface AIClassificationRun {
+  status: 'running' | 'completed' | 'partial' | 'skipped' | 'failed';
+  provider: AIProviderType;
+  model: string;
+  classificationMode: AISettings['classificationMode'];
+  candidateCount: number;
+  sentCount: number;
+  requestCount: number;
+  completedRequestCount: number;
+  classifiedCount: number;
+  contextCount: number;
+  elapsedMs: number;
+  promptTokens: number;
+  responseTokens: number;
+  reason?: string;
 }
 
 export interface ModelIntelligenceMeta {
@@ -130,11 +151,9 @@ export interface ModelIntelligenceMeta {
 }
 
 export type SortOrderMode = 'domain-alpha' | 'alpha-asc' | 'alpha-desc' | 'date-desc' | 'date-asc';
-export type DividerStyle = 'domain-named' | 'clean-line' | 'none';
 
 export interface FolderSortOptions {
   criteria: SortOrderMode;
-  dividerStyle: DividerStyle;
   sortSubfoldersFirst?: boolean;
 }
 
@@ -142,7 +161,6 @@ export interface FolderSortPreviewItem {
   id?: string;
   title: string;
   url?: string;
-  isDivider: boolean;
   domain?: string;
 }
 
@@ -152,5 +170,6 @@ export interface FolderSortPreview {
   folderPath: string;
   itemCount: number;
   domainCount: number;
+  dividersToRemove: number;
   items: FolderSortPreviewItem[];
 }

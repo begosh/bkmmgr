@@ -9,7 +9,7 @@ import { extractMetadataFromDocument } from '../services/metadataExtractor';
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.type === 'GET_PAGE_METADATA') {
       try {
-        const metadata = extractMetadataFromDocument(document, window.location.href);
+        const metadata = extractMetadataFromDocument(document, window.location.href, message.includeContent === true);
         sendResponse({ success: true, metadata });
       } catch (err: any) {
         sendResponse({ success: false, error: err?.message || 'Failed to extract metadata' });

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { PageMetadata, ProposedFolder, TaxonomyTemplate, AISettings } from '../types';
+import React, { useState, useEffect, useRef } from 'react';
+import { PageMetadata, ProposedFolder, TaxonomyTemplate, AISettings, AIClassificationRun } from '../types';
 import { sanitizeUrl } from '../services/urlSanitizer';
 import { proposeBookmarkFolder } from '../services/classifier';
 import {
@@ -15,6 +15,8 @@ import {
 } from '../services/taxonomyTemplates';
 import { sortFolder } from '../services/bookmarkSorter';
 import { getAISettings, classifySingleWithAI } from '../services/aiProvider';
+import { readActivePageMetadata, describeAIPageContext } from '../services/aiPageContext';
+import { describeAIRun, getAIModelName, getQuickSavePreferences, isAIConfigured as hasAIConfigured } from '../services/aiRunStatus';
 import {
   Bookmark,
   Sparkles,
@@ -47,7 +49,7 @@ export const PopupApp: React.FC = () => {
   const [pageMetadata, setPageMetadata] = useState<PageMetadata | null>(null);
   const [existingFolders, setExistingFolders] = useState<string[]>([]);
 
-  // Auto-sort preference (automatically tidy destination folder with dividers on save)
+  // Auto-sort preference (automatically sort destination folder on save)
   const [autoSortFolder, setAutoSortFolder] = useState<boolean>(true);
 
   // AI settings and status
@@ -55,48 +57,39 @@ export const PopupApp: React.FC = () => {
   const [useAI, setUseAI] = useState<boolean>(false);
   const [isClassifyingWithAI, setIsClassifyingWithAI] = useState<boolean>(false);
   const [isAIProposed, setIsAIProposed] = useState<boolean>(false);
+  const [aiRun, setAiRun] = useState<AIClassificationRun | null>(null);
+  const useAIRef = useRef(false);
+  const taxonomyRef = useRef(DEFAULT_TAXONOMY);
 
-  const isAIConfigured = Boolean(
-    aiSettings?.enabled &&
-      (aiSettings.geminiApiKey || aiSettings.googleAccessToken || aiSettings.provider === 'ollama')
-  );
+  const isAIConfigured = hasAIConfigured(aiSettings);
 
   // 1. Initial Load
   useEffect(() => {
+    let cancelled = false;
     async function init() {
       // Load preferred taxonomy
       const preferred = await getPreferredTaxonomy();
+      if (cancelled) return;
       setSelectedTaxonomy(preferred);
+      taxonomyRef.current = preferred;
 
       // Load AI settings
       const ai = await getAISettings();
+      if (cancelled) return;
       setAiSettings(ai);
 
       // Load preferences from storage
-      let initialUseAI = false;
-      if (typeof chrome !== 'undefined' && chrome.storage?.local?.get) {
-        chrome.storage.local.get(
-          ['edgemark_autosort_on_save', 'edgemark_use_ai_in_popup'],
-          (res) => {
-            if (res) {
-              if (typeof res.edgemark_autosort_on_save === 'boolean') {
-                setAutoSortFolder(res.edgemark_autosort_on_save);
-              }
-              if (typeof res.edgemark_use_ai_in_popup === 'boolean') {
-                initialUseAI = res.edgemark_use_ai_in_popup;
-                setUseAI(initialUseAI);
-              } else if (ai.enabled && isAIConfigured) {
-                initialUseAI = true;
-                setUseAI(true);
-              }
-            }
-          }
-        );
-      }
+      const preferences = await getQuickSavePreferences(ai);
+      if (cancelled) return;
+      const initialUseAI = preferences.useAI;
+      useAIRef.current = initialUseAI;
+      setUseAI(initialUseAI);
+      setAutoSortFolder(preferences.autoSort);
 
       // Load existing folders for autocompletion
       try {
         const bookmarks = await getAllBookmarks();
+        if (cancelled) return;
         const folders = Array.from(
           new Set(bookmarks.map((b) => b.folderPath).filter((p): p is string => Boolean(p)))
         ).sort();
@@ -104,10 +97,12 @@ export const PopupApp: React.FC = () => {
       } catch {
         // Fallback
       }
+      if (cancelled) return;
 
       // Query active tab in Edge / Chrome
       if (typeof chrome !== 'undefined' && chrome.tabs?.query) {
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          if (cancelled) return;
           const tab = tabs[0];
           if (tab?.url) {
             const rawUrl = tab.url;
@@ -119,24 +114,10 @@ export const PopupApp: React.FC = () => {
 
             // Ask content script for rich on-page metadata
             if (tab.id && !rawUrl.startsWith('edge://') && !rawUrl.startsWith('chrome://')) {
-              chrome.tabs.sendMessage(tab.id, { type: 'GET_PAGE_METADATA' }, (response) => {
-                let meta: PageMetadata;
-                if (response?.success && response.metadata) {
-                  meta = response.metadata;
-                } else {
-                  let domain = '';
-                  try {
-                    domain = new URL(rawUrl).hostname;
-                  } catch {}
-                  meta = {
-                    url: rawUrl,
-                    title: tab.title || rawUrl,
-                    domain,
-                  };
-                }
-
+              readActivePageMetadata(tab.id, rawUrl, tab.title || rawUrl, ai).then((meta) => {
+                if (cancelled) return;
                 setPageMetadata(meta);
-                calculateProposal(meta, preferred, initialUseAI, ai);
+                calculateProposal(meta, taxonomyRef.current, useAIRef.current, ai);
               });
             }
           }
@@ -158,12 +139,15 @@ export const PopupApp: React.FC = () => {
           breadcrumbs: ['Web APIs', 'Fetch API'],
         };
         setPageMetadata(mockMeta);
-        calculateProposal(mockMeta, preferred, initialUseAI, ai);
+        calculateProposal(mockMeta, taxonomyRef.current, useAIRef.current, ai);
       }
     }
 
     init();
+    return () => {cancelled = true; requestVersion.current++;};
   }, []);
+
+  const requestVersion = useRef(0);
 
   // 2. Proposal Calculator (Heuristic with optional AI enhancement)
   const calculateProposal = async (
@@ -172,6 +156,9 @@ export const PopupApp: React.FC = () => {
     shouldUseAI: boolean,
     settings: AISettings | null
   ) => {
+    const version = ++requestVersion.current;
+    setIsClassifyingWithAI(false);
+    setAiRun(null);
     // Immediate heuristic baseline
     const baselineProp = proposeBookmarkFolder(meta, taxonomy);
     setProposal(baselineProp);
@@ -182,16 +169,18 @@ export const PopupApp: React.FC = () => {
     // If AI is requested and configured, refine with AI
     if (
       shouldUseAI &&
-      settings?.enabled &&
-      (settings.geminiApiKey || settings.googleAccessToken || settings.provider === 'ollama')
+      settings
     ) {
       setIsClassifyingWithAI(true);
       try {
+        let completedRun: AIClassificationRun | undefined;
         const aiRes = await classifySingleWithAI(
-          { url: meta.url, title: meta.title },
+          meta,
           taxonomy,
-          settings
+          settings,
+          report => {completedRun = report; if (version === requestVersion.current) setAiRun(report);}
         );
+        if (version !== requestVersion.current) return;
         if (aiRes) {
           const fullPath = aiRes.subfolder
             ? [aiRes.category, aiRes.subfolder]
@@ -202,7 +191,7 @@ export const PopupApp: React.FC = () => {
             subfolder: aiRes.subfolder,
             fullPath,
             confidence: aiRes.confidence,
-            reasoning: `AI (${settings.geminiModel || 'Gemini'}): ${aiRes.reasoning}`,
+            reasoning: `${settings.provider === 'ollama' ? 'Ollama' : 'Gemini'} (${completedRun?.model || getAIModelName(settings)}): ${aiRes.reasoning}`,
             suggestedTags: ['ai-classified', ...(meta.keywords?.slice(0, 3) || [])],
           });
           setSelectedFolder(fullPath.join(' / '));
@@ -211,7 +200,7 @@ export const PopupApp: React.FC = () => {
       } catch (err) {
         console.warn('AI classification failed, kept rule-based proposal:', err);
       } finally {
-        setIsClassifyingWithAI(false);
+        if (version === requestVersion.current) setIsClassifyingWithAI(false);
       }
     }
   };
@@ -220,6 +209,7 @@ export const PopupApp: React.FC = () => {
   const handleTaxonomyChange = async (taxonomyId: string) => {
     const template = TAXONOMY_TEMPLATES.find((t) => t.id === taxonomyId) || DEFAULT_TAXONOMY;
     setSelectedTaxonomy(template);
+    taxonomyRef.current = template;
     await setPreferredTaxonomy(template.id);
 
     if (pageMetadata) {
@@ -229,6 +219,7 @@ export const PopupApp: React.FC = () => {
 
   // 4. Handle AI Toggle
   const handleToggleAI = (enable: boolean) => {
+    useAIRef.current = enable;
     setUseAI(enable);
     if (typeof chrome !== 'undefined' && chrome.storage?.local?.set) {
       chrome.storage.local.set({ edgemark_use_ai_in_popup: enable });
@@ -254,7 +245,7 @@ export const PopupApp: React.FC = () => {
       const folderId = await ensureFolderPath(pathSegments);
       await createBookmark(title, cleanedUrl, folderId);
 
-      // Automatically sort folder and arrange visual dividers if enabled
+      // Automatically sort the destination folder if enabled
       if (autoSortFolder) {
         try {
           await sortFolder(folderId);
@@ -397,10 +388,10 @@ export const PopupApp: React.FC = () => {
                   ? 'bg-purple-100 text-purple-800 border-purple-300 shadow-xs'
                   : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-100'
               }`}
-              title={useAI ? 'Gemini AI is actively classifying this bookmark' : 'Click to enable Gemini AI classification'}
+              title="Toggle AI classification; the result status shows whether a request was made"
             >
               <Bot className={`w-3.5 h-3.5 ${useAI ? 'text-purple-600' : 'text-slate-400'}`} />
-              <span>{useAI ? 'AI Active' : 'Use AI'}</span>
+              <span>{useAI ? 'AI On' : 'Use AI'}</span>
             </button>
           ) : (
             <button
@@ -415,6 +406,11 @@ export const PopupApp: React.FC = () => {
           )}
         </div>
 
+        {useAI && aiSettings && (
+          <p className="text-[10px] text-purple-700">{describeAIPageContext(pageMetadata, aiSettings)}</p>
+        )}
+        {aiRun && <p role="status" className="text-[10px] text-slate-600">{describeAIRun(aiRun)}</p>}
+
         {/* Proposed Folder Location */}
         {proposal && (
           <div className="p-2.5 bg-blue-50/70 border border-blue-200/80 rounded-lg space-y-2">
@@ -427,7 +423,7 @@ export const PopupApp: React.FC = () => {
               {isClassifyingWithAI ? (
                 <span className="inline-flex items-center space-x-1 text-[10px] font-medium text-purple-700 bg-purple-100 px-1.5 py-0.5 rounded animate-pulse">
                   <Loader2 className="w-3 h-3 animate-spin text-purple-600" />
-                  <span>Gemini AI...</span>
+                  <span>{aiSettings?.provider === 'ollama' ? 'Ollama' : 'Gemini'}...</span>
                 </span>
               ) : isAIProposed ? (
                 <span className="inline-flex items-center space-x-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-200">
@@ -436,7 +432,7 @@ export const PopupApp: React.FC = () => {
                 </span>
               ) : (
                 <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-200 text-blue-800">
-                  {Math.round(proposal.confidence * 100)}% match
+                  Rules · {Math.round(proposal.confidence * 100)}% match
                 </span>
               )}
             </div>
@@ -480,7 +476,7 @@ export const PopupApp: React.FC = () => {
                 onChange={(e) => handleToggleAutoSort(e.target.checked)}
                 className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer"
               />
-              <span>Auto-sort folder by site and arrange visual dividers</span>
+              <span>Auto-sort folder by site</span>
             </label>
 
             <p className="text-[10px] text-blue-700 italic leading-snug">

@@ -346,13 +346,13 @@ describe('AI Provider & Settings', () => {
   });
 });
 
-describe('Bookmark Sorter & Dividers', () => {
+describe('Bookmark Sorting', () => {
   it('correctly detects divider bookmarks', async () => {
-    const { isDividerBookmark } = await import('../src/services/bookmarkSorter');
-    assert.ok(isDividerBookmark({ url: 'about:blank#separator', title: '─── Azure ───' }));
-    assert.ok(isDividerBookmark({ title: '─── GitHub ───' }));
-    assert.ok(isDividerBookmark({ title: '────────────────────' }));
-    assert.ok(!isDividerBookmark({ url: 'https://azure.microsoft.com', title: 'Azure Portal' }));
+    const { isLegacyDividerBookmark } = await import('../src/services/bookmarkSorter');
+    assert.ok(isLegacyDividerBookmark({ url: 'about:blank#separator', title: '─── Azure ───' }));
+    assert.ok(!isLegacyDividerBookmark({ title: '─── GitHub ───' }));
+    assert.ok(!isLegacyDividerBookmark({ title: '────────────────────' }));
+    assert.ok(!isLegacyDividerBookmark({ url: 'https://azure.microsoft.com', title: 'Azure Portal' }));
   });
 
   it('formats friendly display names for known and local domains', async () => {
@@ -374,7 +374,6 @@ describe('Bookmark Sorter & Dividers', () => {
 
     const sorted = sortBookmarkList(items, {
       criteria: 'domain-alpha',
-      dividerStyle: 'none',
     });
 
     assert.strictEqual(sorted[0].title, 'Azure Storage');
@@ -383,57 +382,6 @@ describe('Bookmark Sorter & Dividers', () => {
     assert.strictEqual(sorted[3].title, 'Repo B');
   });
 
-  it('inserts domain-named dividers between different domain groups', async () => {
-    const { generatePlannedItemsWithDividers, sortBookmarkList } = await import(
-      '../src/services/bookmarkSorter'
-    );
-    const items = [
-      { id: '1', title: 'Azure VMs', url: 'https://portal.azure.com/vms' },
-      { id: '2', title: 'GitHub Repo', url: 'https://github.com/test' },
-    ];
-
-    const sorted = sortBookmarkList(items, {
-      criteria: 'domain-alpha',
-      dividerStyle: 'domain-named',
-    });
-    const planned = generatePlannedItemsWithDividers(sorted, {
-      criteria: 'domain-alpha',
-      dividerStyle: 'domain-named',
-    });
-
-    // Expect 2 divider headers + 2 bookmarks = 4 items
-    assert.strictEqual(planned.length, 4);
-    assert.ok(planned[0].isDivider);
-    assert.strictEqual(planned[0].title, '─── Azure ───');
-    assert.strictEqual(planned[1].title, 'Azure VMs');
-    assert.ok(planned[2].isDivider);
-    assert.strictEqual(planned[2].title, '─── GitHub ───');
-    assert.strictEqual(planned[3].title, 'GitHub Repo');
-  });
-
-  it('omits dividers when folder contains only a single domain', async () => {
-    const { generatePlannedItemsWithDividers, sortBookmarkList } = await import(
-      '../src/services/bookmarkSorter'
-    );
-    const items = [
-      { id: '1', title: 'Issue 1', url: 'https://linear.app/issue/1' },
-      { id: '2', title: 'Issue 2', url: 'https://linear.app/issue/2' },
-    ];
-
-    const sorted = sortBookmarkList(items, {
-      criteria: 'domain-alpha',
-      dividerStyle: 'domain-named',
-    });
-    const planned = generatePlannedItemsWithDividers(sorted, {
-      criteria: 'domain-alpha',
-      dividerStyle: 'domain-named',
-    });
-
-    // Single domain: No dividers needed
-    assert.strictEqual(planned.length, 2);
-    assert.ok(!planned[0].isDivider);
-    assert.ok(!planned[1].isDivider);
-  });
 });
 
 describe('Auth & SSO Redirect Protection', () => {

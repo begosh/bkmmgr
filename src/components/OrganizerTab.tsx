@@ -5,8 +5,8 @@ import {
   AISettings,
   FolderSortOptions,
   SortOrderMode,
-  DividerStyle,
   FolderSortPreview,
+  AIClassificationRun,
 } from '../types';
 import {
   TAXONOMY_TEMPLATES,
@@ -19,6 +19,7 @@ import {
   ProposedMove,
 } from '../services/reorganizer';
 import { getAISettings } from '../services/aiProvider';
+import { describeAIRun, getAIModelName } from '../services/aiRunStatus';
 import {
   findEmptyFolders,
   batchDeleteEmptyFolders,
@@ -43,7 +44,6 @@ import {
   FolderX,
   Bot,
   ArrowDownAZ,
-  SeparatorHorizontal,
   Folder,
   SlidersHorizontal,
   ExternalLink,
@@ -73,22 +73,22 @@ export const OrganizerTab: React.FC<OrganizerTabProps> = ({ bookmarks, onReload 
   const [aiSettings, setAiSettings] = useState<AISettings | null>(null);
   const [useAi, setUseAi] = useState(false);
   const [aiProgressMsg, setAiProgressMsg] = useState<string | null>(null);
+  const [aiRun, setAiRun] = useState<AIClassificationRun | null>(null);
 
   // Post-reorganization auto-sort config
   const [autoSortDestination, setAutoSortDestination] = useState(true);
   const [reorgSortCriteria, setReorgSortCriteria] = useState<SortOrderMode>('domain-alpha');
-  const [reorgDividerStyle, setReorgDividerStyle] = useState<DividerStyle>('domain-named');
 
-  // Standalone Sort & Divider Studio state
+  // Standalone Bookmark Sorter state
   const [availableFolders, setAvailableFolders] = useState<
     { id: string; title: string; path: string; count: number }[]
   >([]);
   const [selectedFolderId, setSelectedFolderId] = useState<string>('all');
   const [standaloneSortCriteria, setStandaloneSortCriteria] = useState<SortOrderMode>('domain-alpha');
-  const [standaloneDividerStyle, setStandaloneDividerStyle] = useState<DividerStyle>('domain-named');
   const [sortSubfoldersFirst, setSortSubfoldersFirst] = useState(true);
 
   const [isSorting, setIsSorting] = useState(false);
+  const [sortError, setSortError] = useState<string | null>(null);
   const [sortProgress, setSortProgress] = useState<{
     current: number;
     total: number;
@@ -110,7 +110,7 @@ export const OrganizerTab: React.FC<OrganizerTabProps> = ({ bookmarks, onReload 
     });
   }, []);
 
-  // Populate folder dropdown for Sort & Divider studio
+  // Populate folder dropdown for Bookmark Sorter
   useEffect(() => {
     getBookmarkTree().then((tree) => {
       const list: { id: string; title: string; path: string; count: number }[] = [];
@@ -142,18 +142,26 @@ export const OrganizerTab: React.FC<OrganizerTabProps> = ({ bookmarks, onReload 
 
   // Update live preview when folder or sort parameters change
   useEffect(() => {
-    if (subTab !== 'sort-tidy' || availableFolders.length === 0) return;
+    if (subTab !== 'sort-tidy') return;
+    if (availableFolders.length === 0) {
+      setSortPreview(null);
+      setSelectedFolderId('all');
+      return;
+    }
 
     let targetFolder = availableFolders.find((f) => f.id === selectedFolderId);
     if (!targetFolder && selectedFolderId === 'all') {
       targetFolder = availableFolders[0];
     }
-    if (!targetFolder) return;
+    if (!targetFolder) {
+      setSortPreview(null);
+      setSelectedFolderId('all');
+      return;
+    }
 
     setPreviewLoading(true);
     previewFolderSort(targetFolder.id, targetFolder.title, targetFolder.path, {
       criteria: standaloneSortCriteria,
-      dividerStyle: standaloneDividerStyle,
       sortSubfoldersFirst,
     })
       .then(setSortPreview)
@@ -162,7 +170,6 @@ export const OrganizerTab: React.FC<OrganizerTabProps> = ({ bookmarks, onReload 
     subTab,
     selectedFolderId,
     standaloneSortCriteria,
-    standaloneDividerStyle,
     sortSubfoldersFirst,
     availableFolders,
   ]);
@@ -172,7 +179,9 @@ export const OrganizerTab: React.FC<OrganizerTabProps> = ({ bookmarks, onReload 
     setIsAnalyzing(true);
     setSuccessMessage(null);
     setAiProgressMsg(null);
+    setAiRun(null);
     try {
+      setAiSettings(await getAISettings());
       const plan = await generateReorganizationPlanAsync(
         bookmarks,
         selectedTaxonomy,
@@ -181,6 +190,7 @@ export const OrganizerTab: React.FC<OrganizerTabProps> = ({ bookmarks, onReload 
       );
       setMoves(plan.moves);
       setUnmovedCount(plan.unmovedCount);
+      setAiRun(plan.aiRun || null);
     } finally {
       setIsAnalyzing(false);
       setAiProgressMsg(null);
@@ -219,7 +229,6 @@ export const OrganizerTab: React.FC<OrganizerTabProps> = ({ bookmarks, onReload 
       const sortOpts: FolderSortOptions | undefined = autoSortDestination
         ? {
             criteria: reorgSortCriteria,
-            dividerStyle: reorgDividerStyle,
             sortSubfoldersFirst: true,
           }
         : undefined;
@@ -235,7 +244,7 @@ export const OrganizerTab: React.FC<OrganizerTabProps> = ({ bookmarks, onReload 
       setSuccessMessage(
         `Successfully organized ${result.movedCount} bookmarks into ${selectedTaxonomy.name}${
           result.foldersSorted
-            ? ` and sorted ${result.foldersSorted} destination folders with dividers`
+            ? ` and sorted ${result.foldersSorted} destination folders`
             : ''
         }!`
       );
@@ -249,23 +258,17 @@ export const OrganizerTab: React.FC<OrganizerTabProps> = ({ bookmarks, onReload 
 
   // Execute standalone sorting across all or selected folders
   const handleExecuteSort = async () => {
+    setSuccessMessage(null);
+    setSortError(null);
     const options: FolderSortOptions = {
       criteria: standaloneSortCriteria,
-      dividerStyle: standaloneDividerStyle,
       sortSubfoldersFirst,
     };
 
     if (selectedFolderId === 'all') {
-      const dividerDesc =
-        standaloneDividerStyle === 'domain-named'
-          ? 'domain header dividers (─── Domain ───)'
-          : standaloneDividerStyle === 'clean-line'
-          ? 'clean line dividers'
-          : 'no dividers';
-
       if (
         !window.confirm(
-          `Sort all folders in your bookmark library by "${standaloneSortCriteria}" with ${dividerDesc}? A safety backup snapshot will be saved first.`
+          `Sort all folders in your bookmark library by "${standaloneSortCriteria}"? A safety backup snapshot will be saved first.`
         )
       ) {
         return;
@@ -278,8 +281,14 @@ export const OrganizerTab: React.FC<OrganizerTabProps> = ({ bookmarks, onReload 
           setSortProgress({ current, total, folderName });
         });
         setSuccessMessage(
-          `Successfully sorted ${res.foldersSorted} folders and ${res.bookmarksSorted} bookmarks (${res.dividersCreated} visual dividers created)!`
+          `Sorted ${res.foldersSorted} folders and ${res.bookmarksSorted} bookmarks (${res.dividersRemoved} old dividers removed in completed folders).`
         );
+        if (res.failedFolders) {
+          setSortError(`${res.failedFolders} folders could not be fully sorted. Some old dividers may remain; retry after checking bookmark permissions.`);
+        }
+        onReload();
+      } catch (error) {
+        setSortError(error instanceof Error ? error.message : 'Sorting failed.');
         onReload();
       } finally {
         setIsSorting(false);
@@ -291,8 +300,11 @@ export const OrganizerTab: React.FC<OrganizerTabProps> = ({ bookmarks, onReload 
       try {
         const res = await sortFolder(selectedFolderId, options);
         setSuccessMessage(
-          `Successfully sorted "${targetFolder?.title || 'folder'}" (${res.modifiedCount} bookmarks, ${res.dividersCreated} dividers)!`
+          `Successfully sorted "${targetFolder?.title || 'folder'}" (${res.modifiedCount} bookmarks, ${res.dividersRemoved} old dividers removed)!`
         );
+        onReload();
+      } catch (error) {
+        setSortError(error instanceof Error ? error.message : 'Sorting failed.');
         onReload();
       } finally {
         setIsSorting(false);
@@ -338,7 +350,7 @@ export const OrganizerTab: React.FC<OrganizerTabProps> = ({ bookmarks, onReload 
           }`}
         >
           <ArrowDownAZ className="w-4 h-4 text-indigo-600" />
-          <span>Sort & Insert Dividers</span>
+          <span>Sort Bookmarks</span>
           <span className="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-1.5 py-0.5 rounded-full">
             New
           </span>
@@ -347,7 +359,7 @@ export const OrganizerTab: React.FC<OrganizerTabProps> = ({ bookmarks, onReload 
 
       {/* Success Notification */}
       {successMessage && (
-        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-emerald-800 text-sm">
+        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-emerald-800 text-sm">
           <div className="flex items-center space-x-3">
             <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
             <span>{successMessage}</span>
@@ -450,7 +462,7 @@ export const OrganizerTab: React.FC<OrganizerTabProps> = ({ bookmarks, onReload 
                   className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
                 />
                 <span className="font-semibold text-slate-800">
-                  Auto-sort destination folders & insert domain dividers
+                  Auto-sort destination folders
                 </span>
               </label>
 
@@ -469,18 +481,6 @@ export const OrganizerTab: React.FC<OrganizerTabProps> = ({ bookmarks, onReload 
                     </select>
                   </div>
 
-                  <div className="flex items-center space-x-1.5">
-                    <span className="text-slate-500 font-medium">Dividers:</span>
-                    <select
-                      value={reorgDividerStyle}
-                      onChange={(e) => setReorgDividerStyle(e.target.value as DividerStyle)}
-                      className="bg-white border border-slate-300 rounded px-2 py-1 text-xs text-slate-800"
-                    >
-                      <option value="domain-named">Named Domain Headers (─── Azure ───)</option>
-                      <option value="clean-line">Minimal Line Separators (─────)</option>
-                      <option value="none">No Dividers (Sort only)</option>
-                    </select>
-                  </div>
                 </div>
               )}
             </div>
@@ -496,7 +496,7 @@ export const OrganizerTab: React.FC<OrganizerTabProps> = ({ bookmarks, onReload 
                   <Sparkles className="w-4 h-4 text-amber-300" />
                   <span>
                     {isAnalyzing
-                      ? aiProgressMsg || 'Analyzing Bookmarks...'
+                      ? 'Analyzing Bookmarks...'
                       : 'Generate Reorganization Plan'}
                   </span>
                 </button>
@@ -522,7 +522,19 @@ export const OrganizerTab: React.FC<OrganizerTabProps> = ({ bookmarks, onReload 
                 <span>Automatic safety backup before migration</span>
               </div>
             </div>
+            {aiSettings && useAi && (
+              <p className="text-xs text-purple-700">
+                {aiSettings.classificationMode === 'ai-only' ? 'AI Primary: all eligible bookmarks' : 'Hybrid: ambiguous proposed moves only'} · {getAIModelName(aiSettings)}
+              </p>
+            )}
+            {isAnalyzing && aiProgressMsg && <p role="status" className="text-xs text-slate-600">{aiProgressMsg}</p>}
           </div>
+
+          {aiRun && (
+            <p role="status" className="text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg p-3">
+              {describeAIRun(aiRun)}
+            </p>
+          )}
 
           {/* Proposed Moves Table */}
           {moves.length > 0 && (
@@ -533,7 +545,7 @@ export const OrganizerTab: React.FC<OrganizerTabProps> = ({ bookmarks, onReload 
                     Proposed Reorganization ({acceptedCount} of {moves.length} selected)
                   </h3>
                   <p className="text-xs text-slate-500">
-                    {unmovedCount} bookmarks are already in correct taxonomy folders.
+                    {unmovedCount} bookmarks require no move or are unsupported.
                   </p>
                 </div>
 
@@ -644,37 +656,38 @@ export const OrganizerTab: React.FC<OrganizerTabProps> = ({ bookmarks, onReload 
         </>
       )}
 
-      {/* ===================== TAB 2: SORT & INSERT DIVIDERS ===================== */}
+      {/* ===================== TAB 2: SORT BOOKMARKS ===================== */}
       {subTab === 'sort-tidy' && (
         <div className="space-y-6">
+          {sortError && (
+            <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 p-3 rounded-lg">
+              {sortError}
+            </p>
+          )}
           {/* Main Controls Card */}
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-5">
-            <div className="flex items-start justify-between gap-4">
+            <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
               <div>
                 <div className="flex items-center space-x-2">
                   <ArrowDownAZ className="w-5 h-5 text-indigo-600" />
                   <h2 className="text-lg font-bold text-slate-900">
-                    Bookmark Sorter & Visual Divider Studio
+                    Bookmark Sorter
                   </h2>
                 </div>
                 <p className="text-xs text-slate-500 mt-1 max-w-2xl">
-                  Sort bookmarks inside folders by domain or alphabetically, and automatically insert
-                  clean visual divider headers (e.g.{' '}
-                  <code className="text-indigo-600 font-mono bg-indigo-50 px-1 py-0.5 rounded">
-                    ─── Azure ───
-                  </code>
-                  ) between different groups of sites.
+                  Sort bookmarks inside folders by site, title, or date added. Old EdgeMark
+                  divider bookmarks are removed when you sort; a safety backup is saved first.
                 </p>
               </div>
 
-              <div className="flex items-center space-x-1.5 text-xs text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md shrink-0">
+              <div className="flex items-center space-x-1.5 text-xs text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md">
                 <Shield className="w-3.5 h-3.5" />
                 <span>Automatic safety backup before sorting</span>
               </div>
             </div>
 
             {/* Configuration Options Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-slate-100">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-slate-100">
               {/* Option 1: Target Folder */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-700 flex items-center space-x-1.5">
@@ -722,29 +735,6 @@ export const OrganizerTab: React.FC<OrganizerTabProps> = ({ bookmarks, onReload 
                 </p>
               </div>
 
-              {/* Option 3: Visual Divider Style */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 flex items-center space-x-1.5">
-                  <SeparatorHorizontal className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Visual Dividers</span>
-                </label>
-                <select
-                  value={standaloneDividerStyle}
-                  onChange={(e) => setStandaloneDividerStyle(e.target.value as DividerStyle)}
-                  className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                  <option value="domain-named">
-                    🏷️ Named Domain Headers (─── Azure ───)
-                  </option>
-                  <option value="clean-line">
-                    ➖ Minimal Line Separators (────────────────────)
-                  </option>
-                  <option value="none">❌ No Dividers (Purely Sort Items)</option>
-                </select>
-                <p className="text-[11px] text-slate-400">
-                  Dividers are only added when a folder has links from multiple domains.
-                </p>
-              </div>
             </div>
 
             {/* Checkbox and Action row */}
@@ -771,8 +761,8 @@ export const OrganizerTab: React.FC<OrganizerTabProps> = ({ bookmarks, onReload 
                       ? `Sorting (${sortProgress.current}/${sortProgress.total})...`
                       : 'Sorting Folders...'
                     : selectedFolderId === 'all'
-                    ? 'Sort All Folders & Insert Dividers'
-                    : 'Sort Selected Folder & Insert Dividers'}
+                    ? 'Sort All Folders'
+                    : 'Sort Selected Folder'}
                 </span>
               </button>
             </div>
@@ -822,7 +812,7 @@ export const OrganizerTab: React.FC<OrganizerTabProps> = ({ bookmarks, onReload 
                     Order: {standaloneSortCriteria}
                   </span>
                   <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full font-medium">
-                    Dividers: {standaloneDividerStyle}
+                    Old dividers to remove: {sortPreview.dividersToRemove}
                   </span>
                 </div>
               </div>
@@ -836,19 +826,6 @@ export const OrganizerTab: React.FC<OrganizerTabProps> = ({ bookmarks, onReload 
               ) : (
                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 max-h-[450px] overflow-y-auto space-y-1.5">
                   {sortPreview.items.map((item, idx) => {
-                    if (item.isDivider) {
-                      return (
-                        <div
-                          key={`div-${idx}`}
-                          className="py-1 px-3 my-1 bg-indigo-50 border border-indigo-200 rounded text-center"
-                        >
-                          <span className="text-xs font-bold text-indigo-700 font-mono tracking-wider">
-                            {item.title}
-                          </span>
-                        </div>
-                      );
-                    }
-
                     return (
                       <div
                         key={`bkm-${item.id || idx}`}

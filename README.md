@@ -1,6 +1,6 @@
 # EdgeMark: Smart Bookmark Manager & AI Organizer
 
-A modern, privacy-first browser extension (Manifest V3) for **Microsoft Edge** and **Google Chrome** that organizes bookmarks with the **PARA** method, cleans URL tracking junk, audits live link health, prevents enterprise SSO redirect clobbering, inserts visual domain dividers, and offers optional **Google Gemini AI** classification.
+A modern, privacy-first browser extension (Manifest V3) for **Microsoft Edge** and **Google Chrome** that organizes bookmarks with the **PARA** method, cleans URL tracking junk, audits live link health, prevents enterprise SSO redirect clobbering, sorts bookmarks by site, and offers optional **Gemini or local Ollama AI** classification.
 
 [![CI](https://github.com/begosh/bkmmgr/actions/workflows/ci.yml/badge.svg)](https://github.com/begosh/bkmmgr/actions/workflows/ci.yml)
 [![Manifest V3](https://img.shields.io/badge/manifest-v3-blue)](public/manifest.json)
@@ -20,10 +20,10 @@ A modern, privacy-first browser extension (Manifest V3) for **Microsoft Edge** a
    - Also supports **Topic & Functional**, **Tech Stack**, and **Business & Finance** taxonomies.
    - Interactive diff wizard previews folder changes before applying them.
 
-2. **Auto-Sort on Save & Visual Dividers**:
+2. **Auto-Sort on Save**:
    - Automatically sort bookmarks alphabetically by domain and title.
-   - Inserts clean visual dividers (`─── Domain ───`) between distinct websites.
-   - Quick Save automatically arranges visual dividers and keeps folders pristine.
+   - Keeps bookmarks from the same site together without creating extra bookmarks.
+   - Quick Save automatically sorts the destination folder.
 
 3. **Enterprise SSO & Auth Redirect Protection**:
    - Detects Microsoft Online (`login.microsoftonline.com`), Google Accounts (`accounts.google.com`), Okta, Ping, and corporate SSO portals.
@@ -45,10 +45,11 @@ A modern, privacy-first browser extension (Manifest V3) for **Microsoft Edge** a
    - Canonicalizes Amazon product links to clean `/dp/{ASIN}`.
    - Live URL cleaning on active tab and bulk library cleaning.
 
-7. **Privacy-First Hybrid AI (Google Gemini 3.8)**:
-   - 0ms local heuristic classifier works 100% offline.
-   - Optional Google Gemini integration for deep semantic classification with model intelligence and energy-efficiency metrics.
-   - Homelab / Intranet Shield: Local network hosts (`.lan`, `.local`, RFC1918 IPs) are never transmitted to cloud LLMs.
+7. **Optional AI (Gemini or Ollama)**:
+   - Local heuristic classification works offline.
+   - Optional Gemini or Ollama classification. In **AI & Settings → Page context sent to AI**, choose titles/URLs only (default), available metadata, or metadata plus a short visible-text excerpt (up to 2,000 characters).
+   - The popup and sidebar use the current page. Bulk organization reuses matching open tabs and otherwise falls back to titles/URLs; it never fetches or opens saved pages for context. Page text is used for that request and is not persisted in bookmark backups.
+   - Homelab / Intranet Shield: Local network hosts (`.lan`, `.local`, RFC1918 IPs) are blocked from cloud and remote AI by default; loopback Ollama can classify them locally.
 
 8. **Safety & Universal Backups**:
    - Generates universal **Netscape Bookmark HTML** files (importable into Edge, Chrome, Safari, Firefox).
@@ -109,9 +110,99 @@ npm run package
 npm run dev
 ```
 
+To remove dividers created by older versions, open **Organizer → Sort Bookmarks**, select **All Folders**, and sort. This removes only recognized EdgeMark placeholders, including those in folders with one or no real bookmarks. A safety snapshot is saved first.
+
 GitHub Actions runs the tests and production build on pushes to `main` and pull requests. The source icons in `public/icons/` are included in Git; the optional `npm run icons` regeneration script requires Windows PowerShell.
 
 Build output (`dist/`), release archives, dependencies, local credentials, and personal bookmark exports are ignored by Git. Generate the extension locally with `npm run build` after cloning. Configure optional AI credentials in the extension's Settings tab.
+
+### Bookmark sidebar
+
+Open the sidebar from the Quick Save popup's sidebar button, or press
+**Alt+Shift+B** (customize under your browser's extension keyboard shortcuts).
+The sidebar opens on your library: browse folders, search across titles/sites/
+folder paths, change the display order, create folders, and edit, move, or delete
+bookmarks. Changes refresh live when bookmarks are edited elsewhere. Folder
+sorting and bookmark edits/deletions save a safety backup first.
+
+Use the sidebar's pin button for **Open sidebar from toolbar**. When enabled,
+the extension's toolbar button opens the window-wide sidebar instead of Quick
+Save. The browser controls native pinning and whether the sidebar stays open;
+pin EdgeMark through its Extensions menu or the panel's native pin control.
+The preference does not force the browser to pin or reopen a closed panel.
+
+**Save page** keeps the current-page assistant available without taking space
+from the library. Folder suggestions use local rules while browsing. **Ask
+Ollama / Gemini** performs an explicit AI request and shows its real result.
+
+### Local Ollama testing
+
+The Organizer's **Use AI Assistance** checkbox follows your saved AI setting.
+**Hybrid** mode asks AI only about ambiguous proposed moves; it can finish with
+zero model requests. Select **AI Primary** in Settings to classify all eligible
+bookmarks, including those already in the rule engine's suggested folder.
+The final status reports actual inference requests and responses, model, elapsed
+time, accepted classifications, available page context, and fallback reasons.
+Missing or failed AI results retain rule proposals and are reported explicitly.
+The popup's AI toggle and the sidebar's **Ask AI** action request classification;
+their result status confirms whether the model actually answered. **Test AI Connection** runs a synthetic
+recipe bookmark through the selected Ollama model, so it tests inference rather
+than just listing installed models.
+
+In **AI & Settings**, select **Local LLM (Ollama)**, enable AI assistance, and set:
+
+- Endpoint: `http://localhost:11434`
+- Model: `qwen3.5:4b-q4_K_M` (install with `ollama pull qwen3.5:4b-q4_K_M` if needed)
+- Page context: metadata first, or metadata plus a short excerpt for additional context
+
+The homelab/intranet safeguard permits classification with Ollama on localhost,
+127.0.0.1, or `[::1]`, including the optional context you select. You can leave
+the safeguard checked: it applies again when switching to cloud AI or a remote
+Ollama endpoint. Credential filtering remains active for local requests.
+
+The extension uses structured JSON output with thinking disabled for classification.
+Ollama requests use an 8,192-token context window and small sequential batches
+when enriching a library. Existing saved model choices remain unchanged; the
+Qwen model is the default for new settings. Test classification on a sample
+before applying a reorganization plan.
+
+### Ollama browser access
+
+Ollama can accept requests from a localhost development page and reject the
+installed Edge/Chrome extension with **HTTP 403**. Installed extensions use a
+`chrome-extension://` origin. Set `OLLAMA_ORIGINS=chrome-extension://*` for
+Chromium extensions, or use `chrome-extension://YOUR_EXTENSION_ID` to allow
+one extension. Find the ID on `edge://extensions` or `chrome://extensions`.
+Restart the process that actually serves Ollama after changing its environment.
+
+For **WSL / Linux systemd**, run these commands in the Linux distribution that
+hosts Ollama (on Windows, open it with `wsl -d Ubuntu-24.04`):
+
+```bash
+sudo mkdir -p /etc/systemd/system/ollama.service.d
+sudo tee /etc/systemd/system/ollama.service.d/browser-extensions.conf <<'EOF'
+[Service]
+Environment="OLLAMA_ORIGINS=chrome-extension://*"
+EOF
+sudo systemctl daemon-reload
+sudo systemctl restart ollama
+```
+
+For **native Windows Ollama**, quit Ollama from its tray icon first. In
+PowerShell, set the user environment for future launches and start the server:
+
+```powershell
+[Environment]::SetEnvironmentVariable('OLLAMA_ORIGINS', 'chrome-extension://*', 'User')
+$env:OLLAMA_ORIGINS = 'chrome-extension://*'
+ollama serve
+```
+
+A Windows environment variable does not change an already-running WSL systemd
+service. Keep Ollama's existing loopback binding (`127.0.0.1:11434`) and local
+model settings. Changing the browser allowlist does not require cloud inference.
+Use **Test AI Connection** in the installed extension to verify a real model
+response. An immediate 403 means no classification was performed; the Organizer
+reports the rejected request and preserves rule proposals.
 
 ---
 
@@ -133,7 +224,7 @@ bkmmgr/
 │   │   └── extractor.ts      # Content script for on-page metadata & breadcrumbs
 │   ├── services/
 │   │   ├── bookmarkManager.ts# Browser bookmarks API wrapper + mock support
-│   │   ├── bookmarkSorter.ts # Domain grouping and visual dividers
+│   │   ├── bookmarkSorter.ts # Domain, title, and date sorting
 │   │   ├── urlSanitizer.ts   # Tracking parameter removal & URL normalization
 │   │   ├── healthChecker.ts  # Link verifier with SSO redirect protection
 │   │   ├── deduplicator.ts   # Exact & normalized duplicate detection

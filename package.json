@@ -20,7 +20,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "tsx --test tests/services.test.ts",
+    "test": "tsx --test tests/*.test.ts",
     "icons": "powershell -ExecutionPolicy Bypass -File scripts/generate-icons.ps1",
     "package": "powershell -ExecutionPolicy Bypass -File scripts/package-extension.ps1"
   },
